@@ -1,0 +1,953 @@
+##############################################################################
+#									                                                           #
+#              On the Validity of the Centrality Hypothesis in               #
+#       Cross-Sectional Between-Subject Networks of Psychopathology          #
+#                                                                            #
+#                           Spiller et al. 2020                              # 
+#                                                                            #
+#                       Code Version 3.0 (14.07.2020)                        #
+#                                                                            #
+#----------------------------------------------------------------------------#
+#                                                                            # 
+#                This code is based on code developped by:                   #
+#            Robinaugh et al. 2016 (DOI: 10.1037/abn0000181) and             #
+#            Papini et al. 2019 (DOI: 10.1002/jts.22379)                     #
+#                                                                            #
+#           Questions concerning this code: tobias.r.spiller@gmail.com       #
+#									                                                           #
+##############################################################################
+
+###### Table of Contents #####################################################
+#----- 1. Load libraries ----------------------------------------------------#
+#----- 2. Import and prepare Data -------------------------------------------#
+#----- 3. Replication of Papini et. al (2019) -------------------------------#
+#-----   3.2 Extension ------------------------------------------------------#
+#----- 4. Replication with a different questionnaire ------------------------#
+#-----   4.2 Extension ------------------------------------------------------#
+#----- 5. FDR Corretion of p-values -----------------------------------------#
+#----- 6. Community Analyses ------------------------------------------------#
+#----- 7. Network Comparison Test -------------------------------------------#
+#----- 8. Session info ------------------------------------------------------#
+
+###### 1. Load Libraries #####################################################
+
+#Data handeling
+if(!require("tidyverse")) install.packages("tidyverse")
+if(!require("readxl")) install.packages("readxl")
+
+#For Papini & Correlation plots
+if(!require("psych")) install.packages("psych")
+if(!require("Cairo")) install.packages("Cairo")
+if(!require("ggpubr")) install.packages("ggpubr")
+if(!require("ppcor")) install.packages("ppcor")
+if(!require("matrixStats")) install.packages("matrixStats")
+if(!require("RColorBrewer")) install.packages("RColorBrewer")
+
+
+#Network specific
+if(!require("bootnet")) install.packages("bootnet")
+if(!require("qgraph")) install.packages("qgraph")
+if(!require("mgm")) install.packages("mgm")
+if(!require("NetworkComparisonTest")) install.packages("NetworkComparisonTest")
+if(!require("EGAnet")) install.packages("EGAnet")
+
+###### 2. Import and prepare Data ############################################
+
+## Import full Dataset from excel
+Data_Spiller <- read_excel("Data/Data - Spiller.xlsx")
+
+## Prepare 
+# Exclude missing Data
+Data_Spiller <- na.omit(Data_Spiller)
+
+## Select different questionnaires and ID pre and post treatment
+# PCL-items
+pcl_pre.df<- dplyr::select(Data_Spiller, casenum,(pcl_4_1:pcl_4_17))
+pcl_post.df <-  dplyr::select(Data_Spiller, casenum, (t2_pcl_4_1:t2_pcl_4_17)) 
+
+# PTSD_Inventoriy-items
+PTSDInvent_pre.df<- dplyr::select(Data_Spiller, casenum,(PTSD_Inventory_1:PTSD_Inventory_17))
+PTSDInvent_post.df <-  dplyr::select(Data_Spiller, casenum, (t2_PTSD_Inventory_1:t2_PTSD_Inventory_17)) 
+
+## CAPS
+# Select raw single item values
+CAPS_pre.df <-  dplyr::select(Data_Spiller, casenum, (q1a:CAPS_17)) 
+CAPS_post.df <-  dplyr::select(Data_Spiller, casenum, (t2_q1a:CAPS_T2_17)) 
+
+# Calulate sumscore for every item
+CAPS_pre.df <- CAPS_pre.df %>%
+  mutate(Q1 = q1a+q1b,
+         Q2 = q2a+q2b,
+         Q3 = q3a+q3b,
+         Q4 = q4a+q4b,
+         Q5 = q5a+q5b,
+         Q6 = q6a+q6b,
+         Q7 = q7a+q7b,
+         Q8 = q8a+q8b,
+         Q9 = q9a+q9b,
+         Q19 = q10a+q10b,
+         Q11 = q11a+q11b,
+         Q12 = q12a+q12b,
+         Q13 = q13a+q13b,
+         Q14 = q14a+q14b,
+         Q15 = q15a+q15b,
+         Q16 = q16a+q16b,
+         Q17 = q17a+q17b)
+
+CAPS_post.df <- CAPS_post.df %>%
+  mutate(Q1 = t2_q1a+t2_q1b,
+         Q2 = t2_q2a+t2_q2b,
+         Q3 = t2_q3a+t2_q3b,
+         Q4 = t2_q4a+t2_q4b,
+         Q5 = t2_q5a+t2_q5b,
+         Q6 = t2_q6a+t2_q6b,
+         Q7 = t2_q7a+t2_q7b,
+         Q8 = t2_q8a+t2_q8b,
+         Q9 = t2_q9a+t2_q9b,
+         Q19 = t2_q10a+t2_q10b,
+         Q11 = t2_q11a+t2_q11b,
+         Q12 = t2_q12a+t2_q12b,
+         Q13 = t2_q13a+t2_q13b,
+         Q14 = t2_q14a+t2_q14b,
+         Q15 = t2_q15a+t2_q15b,
+         Q16 = t2_q16a+t2_q16b,
+         Q17 = t2_q17a+t2_q17b)
+
+
+# select summed single items
+CAPS_pre.df <-  dplyr::select(CAPS_pre.df, casenum, (Q1:Q17)) 
+CAPS_post.df <-  dplyr::select(CAPS_post.df, casenum, (Q1:Q17))
+
+# Rename colums
+colnames(pcl_pre.df) <- colnames(pcl_post.df) <- c("casenum", "INT PCL", "DRE PCL", "FLA PCL", "UPS PCL", "PHY PCL", "AVT PCL", "AVS PCL", "AMN PCL", "DIS PCL", "DTA PCL", 
+                                                   "NUM PCL", "FUT PCL", "SLE PCL", "ANG PCL", "CON PCL", "HYP PCL", "STR PCL")
+
+colnames(CAPS_pre.df) <- colnames(CAPS_post.df) <- c("casenum", "INT CAPS", "DRE CAPS", "FLA CAPS", "UPS CAPS", "PHY CAPS", "AVT CAPS", "AVS CAPS", "AMN CAPS", "DIS CAPS", "DTA CAPS", 
+                                                      "NUM CAPS", "FUT CAPS", "SLE CAPS", "ANG CAPS", "CON CAPS", "HYP CAPS", "STR CAPS")
+
+shortlabel <- c("INT B1", "DRE B2", "FLA B3", "UPS B4", "PHY B5", "AVT C1", "AVS C2", "AMN C3", "DIS C4", "DTA C5", "NUM C6", "FUT C7", "SLE D1", "ANG D2", "CON D3", "HYP D4", "STR D5")
+
+###### 3. Replication with a different questionnaire #######################
+# As we aimed to replicate Papini et al. (2019) in a first step. Hence, we use the exact 
+# same code. We would like to express our gratidute to Papini et al. to post their
+# code with their publication, allowing us and others to reproduce and replicate 
+# their analysis using the CAPS.
+
+#Calculate Node-Network Relationships
+#load pre and post (last measure) dataframes
+df.pre <- CAPS_pre.df  #!# here we load our own dataset
+df.last <- CAPS_post.df #!# here we load our own dataset
+identical(df.pre[['casenum,']],df.last[['casenum,']])
+
+#create symptom dataframes for analysis
+x <- df.pre[, 2:18]  #!# here we select the items without the id
+y <- df.last[, 2:18] #!# here we select the items without the id
+
+#calculate total scores including all symptoms
+x$pre.tot <- rowSums(x[1:17])
+y$last.tot <- rowSums(y[1:17])
+
+#create a dataframe to store correlations for each symptom
+df.cor <- data.frame(node = names(x[1:17]))
+
+#create lists to store calculations an verify accuracy  
+df.combine <- data.frame(subject.pre = as.numeric(df.pre$casenum), subject.last = as.numeric(df.last$casenum)) #!# we used "casenum" to identify the subjects, Papini used "subject"
+
+#this loop calculates Δnode-Δnetwork correlations
+#each column is a symptom, so i = symptom being analyzed
+for(i in 1:17){
+  #calculate change in symptom for every subject by subtracting each column in pre by the same column in post
+  a = x[i] - y[i]
+  #calculate for every subject and every symptom the total score minus the symptom score
+  b = x$pre.tot - x[i]
+  c = y$last.tot - y[i]
+  #calculate for every subject and every symptom the change in total score (without including that symptom)
+  d = b - c
+  #combine all data to verify accuracy
+  pre.name = paste(names(x[i]), ".pre", sep="") #symptom at pre
+  last.name = paste(pre.name, ".last", sep="") #symptom at last
+  node.change = paste("Δ",sep="", names(x[i])) #symptom change
+  network.change = paste("Δtotal.without.",sep="", names(x[i])) #total change excluding symptom
+  df.combine[pre.name] = x[i]
+  df.combine[last.name] = y[i]
+  df.combine[node.change] = a
+  df.combine[network.change] = d
+  #calculate correlation between each Δsymptom and Δtotal.without.symptom
+  cor <- cor.test(a[[1]],d[[1]])
+  #create a new dataframe
+  df.cor[i,"ΔnodeΔnetwork.R"] <- cor$estimate[[1]]
+}
+
+## FINAL OUTPUTS
+## df.cor displays Δnode - Δnetwork correlation for each symptom
+#print(df.cor)
+## df.combine
+##verify pre/last subject IDs match
+#identical(df.combine[['subject.pre']],df.combine[['subject.last']])
+##visually inspect symptom difference scores to verify they are accurate
+#print(head(df.combine))
+
+##Estimate pretreatment network
+if(!require("bootnet")) install.packages("bootnet")
+df.net <- df.pre[,2:18]  #!# here we select the items without the id
+net.pre <- estimateNetwork(df.net, default = "EBICglasso", verbose = FALSE)
+
+
+##Estimate predictability of nodes
+if(!require("mgm")) install.packages("mgm")
+mat <- as.matrix(df.net)
+p <- ncol(df.net)
+fit <- mgm(data = mat, type = rep('g', p), level = rep(1, p), lambdaSel = 'EBIC', ruleReg = 'OR', pbar = FALSE)
+pred <- predict(object = fit, data = df.net, errorCon = 'R2')
+
+
+##Plot networks
+if(!require("psych")) install.packages("psych") #describe
+if(!require("Cairo")) install.packages("Cairo") #!# Unfortunatley works only with older versions of R - Figures were estimated on a differnt computer using an older version of R
+#DSM-IV clustering
+clusters <- list("Intrusion" = c(1, 2, 3, 4, 5), "Avoidance" = c(6, 7,8,9,10,11,12), "Hyperarousal" = c(13, 14, 15, 16, 17)) #!# changed number of groups
+#save as pdf
+Cairo(file=paste("FigureS1_CAPS.pdf"), type="pdf", units="in", width=5, height=4,  dpi=300, bg="white") #!# Size changed
+plot(net.pre, label.prop = 0.6, vsize = describe(df.net)$mean, node.width = 2, borders = TRUE, legend = FALSE, groups=clusters, labels = shortlabel, palette='pastel', sampleSize=nrow(df.net), pie = pred$error[,2], pieColor = rep('#377EB8',p)) #changed labels
+dev.off()
+
+#!# Plot networks standard layout #!#
+Colors = (RColorBrewer::brewer.pal(n = 3, name = 'Set2'))
+
+pdf("NW_CAPS_pre_circle.pdf", width=5, height=4)
+pre.CAPS <- plot(net.pre, labels= shortlabel, layout="circle", label.prop = 0.6, vsize=8, cut=0, 
+                 border.width=1.5, border.color='black',pie = pred$error[,2],groups=clusters, color= Colors,borders = TRUE, legend = FALSE)
+dev.off()
+
+## Post
+mat.post <- as.matrix(df.net.post)
+p.post <- ncol(df.net.post)
+fit <- mgm(data = mat.post, type = rep('g', p.post), level = rep(1, p.post), lambdaSel = 'EBIC', ruleReg = 'OR', pbar = FALSE)
+pred.post <- predict(object = fit, data = df.net.post, errorCon = 'R2')
+
+df.net.post <- df.last[,2:18]  #!# here we select the items without the id
+net.post <- estimateNetwork(df.net.post, default = "EBICglasso", verbose = FALSE)
+
+pdf("NW_CAPS_post_circle.pdf", width=5, height=4)
+post.CAPS <- plot(net.post, labels= shortlabel, layout="circle", label.prop = 0.6, vsize=8, cut=0, 
+                 border.width=1.5, border.color='black',pie = pred.post$error[,2],groups=clusters, color= Colors,borders = TRUE, legend = FALSE)
+dev.off()
+#!#
+
+##Calculate Node Metrics
+if(!require("qgraph")) install.packages("qgraph")
+if(!require("ppcor")) install.packages("ppcor")
+if(!require("matrixStats")) install.packages("matrixStats")
+node.cent <- centrality_auto(net.pre)
+
+#data frame with all metrics 
+node.metrics <- data.frame(mean = colMeans(df.net), strength = node.cent$node.centrality$Strength, predictability = as.numeric(as.character(pred$errors[,2])), ΔnodeΔnetwork.R = df.cor$ΔnodeΔnetwork.R, SD = colSds(as.matrix(df.net)))
+
+write_csv(node.metrics, "CAPS_tabsle_S2.csv")
+cor.mean <- cor.test(node.metrics$mean, node.metrics$ΔnodeΔnetwork.R)
+cor.strength <- cor.test(node.metrics$strength, node.metrics$ΔnodeΔnetwork.R)
+cor.pred <- cor.test(node.metrics$predictability, node.metrics$ΔnodeΔnetwork.R) 
+cor.strengthpred <- cor.test(node.metrics$predictability, node.metrics$strength)
+cor.meanpred <- cor.test(node.metrics$predictability, node.metrics$mean) 
+cor.meanstrength <- cor.test(node.metrics$mean, node.metrics$strength)
+
+pcor(node.metrics[,c(1,2,4)], method = "pearson")
+pcor(node.metrics[,c(1,3,4)], method = "pearson")
+
+paired.r(cor.strength$estimate[[1]],cor.pred$estimate[[1]], cor.strengthpred$estimate[[1]], n=17, twotailed = TRUE) #SIG
+paired.r(cor.strength$estimate[[1]],cor.mean$estimate[[1]], cor.meanstrength$estimate[[1]], n=17, twotailed = FALSE) #SIG
+paired.r(cor.mean$estimate[[1]],cor.pred$estimate[[1]], cor.meanpred$estimate[[1]], n=17, twotailed = FALSE) #SIG
+
+
+#Plot Correlations Between Node-Metrics and Node-Network Relationship
+{r corcor.plot, fig.show = 'hide'}
+
+cor.theme <- theme(
+  #axis.line = element_line(size=.4),
+  axis.title.x = element_text(size = 12),
+  axis.title.y = element_text(size = 12),
+  axis.text.x = element_text(size = 6), 
+  axis.text.y = element_text(size = 6),
+  plot.margin = unit(c(0,0.35,0,0), "cm")
+)
+
+#create plots
+cor.plots <- list()
+for(i in 1:(ncol(node.metrics) - 2)){
+  X = node.metrics[[i]]
+  x.scale = function(X) sprintf("%.1f", X, digits = 4)
+  x.breaks = seq(min(X), max(X), length.out = 4)
+  Y = node.metrics[["ΔnodeΔnetwork.R"]]
+  y.scale = function(Y) sprintf("%.1f", Y, digits = 4)
+  y.breaks = seq(min(Y), max(Y), length.out = 4)
+  cor.plots[[i]] <- 
+    ggplot(data = data.frame(X = X, Y = Y, node = row.names(node.metrics)), 
+           aes(x = X, y = Y)) +
+    geom_point(size = 2, show.legend = TRUE) +
+    scale_x_continuous(labels = x.scale, breaks = x.breaks) +
+    scale_y_continuous(labels = y.scale, breaks = y.breaks) +
+    #geom_text(aes(label = node), hjust = -0.2, vjust = 0.5) +
+    theme_classic() +
+    labs(x = paste(colnames(node.metrics[i])), 
+         y = expression(paste(Delta, "Node-", Delta, "Network Correlation"))) + 
+    geom_smooth(method = "lm", se = FALSE, color = "black") + cor.theme
+  ggsave(cor.plots[[i]], filename = paste(colnames(node.metrics[i]), "_supp_CAPS.pdf", sep =""), device = "pdf", dpi = 300, width = 2.5, height = 2, units = "in", scale=1.5)
+}
+
+
+#Pretreatment Network Stability
+#Non-parametric bootstrapped confidence intervals of estimated edges
+bootnet.df.net <- bootnet(df.net, nBoots = 1000, default = "EBICglasso", nCores = 6, statistics = c("edge", "strength")) #!# bootnet.df.net_CAPS <- bootnet.df.net
+
+#Plot bootstrapped edge CIs:
+sf1 <- plot(bootnet.df.net, labels = TRUE, order = "sample") + 
+  theme(axis.text.y = element_text(size = 14), axis.text.x = element_text(size = 14), strip.text = element_text(size = 20)) 
+sf1 <- sf1 + scale_y_continuous(labels = sf1$data$id, breaks = seq(1,272,1), expand=c(0,0))
+ggsave(sf1, filename = "sf1_CAPS.pdf", device = "pdf", dpi = 300, width = 15, height = 20, units = "in")
+
+#Plot significant differences (alpha = 0.05) of edges:
+sf2 <- plot(bootnet.df.net, "edge", plot = "difference", onlyNonZero = TRUE, labels =  FALSE, order = "sample") + theme(strip.text = element_text(size = 20))
+ggsave(sf2, filename = "sf2_CAPS.pdf", device = "pdf", dpi = 300, width = 7, height = 7, units = "in")
+
+#Plot significant differences (alpha = 0.05) of node strength:
+sf3 <- plot(bootnet.df.net, "strength", plot = "difference", order = "sample") + theme(axis.text.y = element_text(size = 14), axis.text.x = element_text(size = 14), strip.text = element_text(size = 20))
+ggsave(sf3, filename = "sf3_CAPS.pdf", device = "pdf", dpi = 300, width = 7, height = 7, units = "in")
+
+#Case-drop boostrap test
+casedrop.df.net <- bootnet(df.net, default = "EBICglasso", nBoots = 10000, nCores = 6, type = "case", caseN = .7 * nrow(df.net)) #!# casedrop.df.net_CAPS <- casedrop.df.net
+
+#Compute CS-coefficients:
+stability.df.net <- corStability(casedrop.df.net, statistics = "strength", verbose = FALSE)
+stability.df.net #!# 0.745
+
+
+#!# End of Papini's code #!#
+
+
+
+######   3.2 Extension #######################################################
+
+# Instead of strenght use also expected influence
+## Compare Stenght and EI
+# Plot
+pdf("CAPS_Strength_EI.pdf", width=10, height=5)
+centralityPlot(net.pre, include = c("Strength","ExpectedInfluence"),
+               orderBy = "Strength", labels = shortlabel)
+dev.off()
+
+#Export metrics as df, z-transform, plot and correlate
+#Export
+S_EI <- node.cent$node.centrality$Strength
+S_EI.df <- as.data.frame(S_EI)
+S_EI.df$EI <- node.cent$node.centrality$ExpectedInfluence
+S_EI.df$mean <- node.metrics$mean
+S_EI.df$SD <- node.metrics$SD
+S_EI.df$pred <- node.metrics$predictability
+S_EI.df$change <- df.cor$ΔnodeΔnetwork.R
+
+# Add Endorsement
+Frequency <-colSums(CAPS_pre.df != 0)
+Endorsement <- 701-Frequency
+Endorsement <- Endorsement[2:18]
+S_EI.df$Endorsement <- (Endorsement)/701
+
+# Add Delta nodes and its SD
+Delta_SD_node.df <-dplyr::select(df.combine, `ΔINT CAPS`, `ΔDRE CAPS`,`ΔFLA CAPS`, `ΔUPS CAPS`, `ΔPHY CAPS`, `ΔAVT CAPS`, `ΔAVS CAPS`,
+                                 `ΔAMN CAPS`, `ΔDIS CAPS`,`ΔDTA CAPS`, `ΔNUM CAPS`, `ΔFUT CAPS`, `ΔSLE CAPS`, `ΔANG CAPS`, `ΔCON CAPS`, `ΔHYP CAPS`, `ΔSTR CAPS`)
+S_EI.df$real_change_not_association <- colMeans(Delta_SD_node.df)
+S_EI.df$real_change_not_association_SD <- colSds(as.matrix(df.net))
+
+#z-transform
+S_EI.df$Strenght_z <- scale(S_EI.df$S_EI)
+S_EI.df$EI_z <- scale(S_EI.df$EI)
+S_EI.df$mean_z <- scale(S_EI.df$mean)
+S_EI.df$SD_z <- scale(S_EI.df$SD)
+S_EI.df$pred_z <- scale(S_EI.df$pred)
+S_EI.df$change_z <- scale(S_EI.df$change)
+S_EI.df$Endorsement_z <- scale(Endorsement)
+S_EI.df$real_change_not_association_z <- scale(S_EI.df$real_change_not_association)
+S_EI.df$real_change_not_association_SD_z <- scale(S_EI.df$real_change_not_association_SD)
+
+S_EI.df_without_amnesia <- S_EI.df[-c(8), ]
+
+cor.test(S_EI.df$SD_z,S_EI.df$Strenght_z, method = "pearson")     #
+cor.test(S_EI.df$SD_z,S_EI.df$EI_z, method = "pearson")           # 
+cor.test(S_EI.df$SD_z,S_EI.df$mean_z, method = "pearson")         # sig
+cor.test(S_EI.df$SD_z,S_EI.df$pred_z, method = "pearson")         # 
+cor.test(S_EI.df$SD_z,S_EI.df$Endorsement_z, method = "pearson")  # sig
+
+cor.test(S_EI.df_without_amnesia$SD_z,S_EI.df_without_amnesia$Strenght_z, method = "pearson")     # sig
+cor.test(S_EI.df_without_amnesia$SD_z,S_EI.df_without_amnesia$EI_z, method = "pearson")           # 
+cor.test(S_EI.df_without_amnesia$SD_z,S_EI.df_without_amnesia$mean_z, method = "pearson")         # 
+cor.test(S_EI.df_without_amnesia$SD_z,S_EI.df_without_amnesia$pred_z, method = "pearson")         # sig
+cor.test(S_EI.df_without_amnesia$SD_z,S_EI.df_without_amnesia$Endorsement_z, method = "pearson")  # sig
+
+
+# Plot and test correlation
+## Pearson correlation
+# EI vs node_network change
+pdf("EI_vs_nodenode_CAPS_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df, y = "change_z", x = "EI_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Expected influence")
+dev.off()
+
+#EI vs nodenode without amnesia
+S_EI.df_without_amnesia <- S_EI.df[-c(8), ]
+pdf("EI_vs_nodenode_without_amnes_CAPS_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df_without_amnesia, y = "change_z", x = "EI_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Expected influence")
+dev.off()
+
+
+# Mean vs node_network change
+pdf("mean_vs_nodenode_CAPS_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df, y = "change_z", x = "mean_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Mean symptom severity")
+dev.off()
+
+#Mean vs nodenode without amnesia
+S_EI.df_without_amnesia <- S_EI.df[-c(8), ]
+pdf("mena_vs_nodenode_without_amnes_CAPS_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df_without_amnesia, y = "change_z", x = "mean_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Mean symptom severity")
+dev.off()
+
+#Endorsement vs node_network change
+pdf("End_vs_nodenode_CAPS_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df, y = "change_z", x = "Endorsement_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Infrequency of endorsement")
+dev.off()
+
+#Endorsement vs nodenode without amnesia
+S_EI.df_without_amnesia <- S_EI.df[-c(8), ]
+pdf("End_vs_nodenode_without_amnes_CAPS_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df_without_amnesia, y = "change_z", x = "Endorsement_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Infrequency of endorsement")
+dev.off()
+
+#Predictability vs node_network change
+pdf("Pred_vs_nodenode_CAPS_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df, y = "change_z", x = "pred_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Predictability")
+dev.off()
+
+#Predictability vs nodenode without amnesia
+S_EI.df_without_amnesia <- S_EI.df[-c(8), ]
+pdf("Pred_vs_nodenode_without_amnes_CAPS_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df_without_amnesia, y = "change_z", x = "pred_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Predictability")
+dev.off()
+
+#Strenght vs node_network change
+pdf("Strength_vs_nodenode_CAPS_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df, y = "change_z", x = "Strenght_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Strenght")
+dev.off()
+
+#Strenght vs nodenode without amnesia
+S_EI.df_without_amnesia <- S_EI.df[-c(8), ]
+pdf("Strength_vs_nodenode_without_amnes_CAPS_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df_without_amnesia, y = "change_z", x = "Strenght_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Strenght")
+dev.off()
+
+
+
+## Numeric Correlations 
+# Z-Standartized
+# Incl. Amnesia
+cor.mean <- cor.test(S_EI.df$mean_z, S_EI.df$change_z, method = "pearson")                    
+cor.strength <- cor.test(S_EI.df$Strenght_z, S_EI.df$change_z, method = "pearson")            
+cor.pred <- cor.test(S_EI.df$pred_z,S_EI.df$change_z, method = "pearson")             
+cor.EI <- cor.test(S_EI.df$EI_z, S_EI.df$change_z, method = "pearson")             
+cor.END <- cor.test(S_EI.df$Endorsement_z, S_EI.df$change_z, method = "pearson")            
+
+# Without Amnesia
+cor.mean.withoutAmnesia <- cor.test(S_EI.df_without_amnesia$mean_z, S_EI.df_without_amnesia$change_z, method = "pearson") 
+cor.strength.withoutAmnesia <- cor.test(S_EI.df_without_amnesia$Strenght_z, S_EI.df_without_amnesia$change_z, method = "pearson") 
+cor.pred.withoutAmnesia <- cor.test(S_EI.df_without_amnesia$pred_z, S_EI.df_without_amnesia$change_z, method = "pearson") 
+cor.EI.withoutAmnesia <- cor.test(S_EI.df_without_amnesia$EI_z, S_EI.df_without_amnesia$change_z, method = "pearson") 
+cor.INF.withoutAmnesia <- cor.test(S_EI.df_without_amnesia$Endorsement_z, S_EI.df_without_amnesia$change_z, method = "pearson")
+
+## Non-Standartized
+# Incl. Amnesia
+cor.mean_NS <- cor.test(S_EI.df$mean, S_EI.df$change, method = "pearson") 
+cor.strength_NS <- cor.test(S_EI.df$Strenght, S_EI.df$change, method = "pearson")
+cor.pred_NS <- cor.test(S_EI.df$pred,S_EI.df$change, method = "pearson") 
+cor.EI_NS <- cor.test(S_EI.df$EI, S_EI.df$change, method = "pearson") 
+cor.END_NS <- cor.test(S_EI.df$Endorsement, S_EI.df$change, method = "pearson")
+
+# Without Amnesia
+cor.mean.withoutAmnesia_NS <- cor.test(S_EI.df_without_amnesia$mean, S_EI.df_without_amnesia$change, method = "pearson") 
+cor.strength.withoutAmnesia_NS <- cor.test(S_EI.df_without_amnesia$Strenght, S_EI.df_without_amnesia$change, method = "pearson") 
+cor.pred.withoutAmnesia_NS <- cor.test(S_EI.df_without_amnesia$pred, S_EI.df_without_amnesia$change, method = "pearson") 
+cor.EI.withoutAmnesia_NS <- cor.test(S_EI.df_without_amnesia$EI, S_EI.df_without_amnesia$change, method = "pearson") 
+cor.INF.withoutAmnesia_NS <- cor.test(S_EI.df_without_amnesia$Endorsement, S_EI.df_without_amnesia$change, method = "pearson")
+
+## Correlation of EI and mean symptom severity
+cor.EI_mean <- cor.test(S_EI.df$mean, S_EI.df$EI, method = "pearson") 
+cor.EI_End <- cor.test(S_EI.df$mean, S_EI.df$Endorsement, method = "pearson") 
+
+###### 4. Replication of Papini et al. (2019) ################################
+## !! Cave: R - objects are named exactly the same as in the replication part of the script !! ##
+## Only the exported PDFs have a different name. This is done to avoid additional coding errors ##
+## If you want to call a specific R object, make sure that is "filled" with the data from the questionnaire of interest ##
+
+## Original code - deviations are marked (#!#)
+
+#see methods for description of data used for analysis. 
+
+#Calculate Node-Network Relationships
+#load pre and post (last measure) dataframes
+df.pre <- pcl_pre.df #!# here we load our own dataset
+df.last <- pcl_post.df #!# here we load our own dataset
+identical(df.pre[['casenum,']],df.last[['casenum,']])
+
+#create symptom dataframes for analysis
+x <- df.pre[, 2:18]  #!# here we select the items without the id
+y <- df.last[, 2:18] #!# here we select the items without the id
+
+#calculate total scores including all symptoms
+x$pre.tot <- rowSums(x[1:17])
+y$last.tot <- rowSums(y[1:17])
+
+#create a dataframe to store correlations for each symptom
+df.cor <- data.frame(node = names(x[1:17]))
+
+#create lists to store calculations an verify accuracy  
+df.combine <- data.frame(subject.pre = as.numeric(df.pre$casenum), subject.last = as.numeric(df.last$casenum)) #!# we used "casenum" to identify the subjects, Papini used "subject"
+
+#this loop calculates Δnode-Δnetwork correlations
+#each column is a symptom, so i = symptom being analyzed
+for(i in 1:17){
+  #calculate change in symptom for every subject by subtracting each column in pre by the same column in post
+  a = x[i] - y[i]
+  #calculate for every subject and every symptom the total score minus the symptom score
+  b = x$pre.tot - x[i]
+  c = y$last.tot - y[i]
+  #calculate for every subject and every symptom the change in total score (without including that symptom)
+  d = b - c
+  #combine all data to verify accuracy
+  pre.name = paste(names(x[i]), ".pre", sep="") #symptom at pre
+  last.name = paste(pre.name, ".last", sep="") #symptom at last
+  node.change = paste("Δ",sep="", names(x[i])) #symptom change
+  network.change = paste("Δtotal.without.",sep="", names(x[i])) #total change excluding symptom
+  df.combine[pre.name] = x[i]
+  df.combine[last.name] = y[i]
+  df.combine[node.change] = a
+  df.combine[network.change] = d
+  #calculate correlation between each Δsymptom and Δtotal.without.symptom
+  cor <- cor.test(a[[1]],d[[1]])
+  #create a new dataframe
+  df.cor[i,"ΔnodeΔnetwork.R"] <- cor$estimate[[1]]
+}
+
+## FINAL OUTPUTS
+## df.cor displays Δnode - Δnetwork correlation for each symptom
+#print(df.cor)
+## df.combine
+##verify pre/last subject IDs match
+#identical(df.combine[['subject.pre']],df.combine[['subject.last']])
+##visually inspect symptom difference scores to verify they are accurate
+#print(head(df.combine))
+```
+
+##Estimate pretreatment network
+if(!require("bootnet")) install.packages("bootnet")
+df.net <- df.pre[,2:18]  #!# here we select the items without the id
+net.pre <- estimateNetwork(df.net, default = "EBICglasso", verbose = FALSE)
+
+
+##Estimate predictability of nodes
+if(!require("mgm")) install.packages("mgm")
+mat <- as.matrix(df.net)
+p <- ncol(df.net)
+fit <- mgm(data = mat, type = rep('g', p), level = rep(1, p), lambdaSel = 'EBIC', ruleReg = 'OR', pbar = FALSE)
+pred <- predict(object = fit, data = df.net, errorCon = 'R2')
+
+
+##Plot networks
+if(!require("psych")) install.packages("psych") #describe
+if(!require("Cairo")) install.packages("Cairo")
+# DSM IV clustering
+clusters <- list("Intrusion" = c(1, 2, 3, 4, 5), "Avoidance" = c(6, 7,8,9,10,11,12), "Hyperarousal" = c(13, 14, 15, 16, 17)) #!# changed number of groups
+#save as pdf
+Cairo(file=paste("FigureS2_PCL.pdf"), type="pdf", units="in", width=5, height=4,  dpi=300, bg="white") #!# Size changed
+plot(net.pre, label.prop = 0.6, vsize = describe(df.net)$mean, node.width = 3, borders = TRUE, legend = FALSE, groups=clusters, labels = shortlabel, palette='pastel', sampleSize=nrow(df.net), pie = pred$error[,2], pieColor = rep('#377EB8',p)) #changed labels
+dev.off()
+
+#!# Plot networks standard layout #!#
+Colors = (RColorBrewer::brewer.pal(n = 3, name = 'Set2'))
+
+pdf("NW_PCL_pre_circle.pdf", width=5, height=4)
+pre.CAPS <- plot(net.pre, labels= shortlabel, layout="circle", label.prop = 0.6, vsize=8, cut=0, 
+                 border.width=1.5, border.color='black',pie = pred$error[,2],groups=clusters, color= Colors,borders = TRUE, legend = FALSE)
+dev.off()
+
+## Post
+mat.post <- as.matrix(df.net.post)
+p.post <- ncol(df.net.post)
+fit <- mgm(data = mat.post, type = rep('g', p.post), level = rep(1, p.post), lambdaSel = 'EBIC', ruleReg = 'OR', pbar = FALSE)
+pred.post <- predict(object = fit, data = df.net.post, errorCon = 'R2')
+
+df.net.post <- df.last[,2:18]  #!# here we select the items without the id
+net.post <- estimateNetwork(df.net.post, default = "EBICglasso", verbose = FALSE)
+
+pdf("NW_PCL_post_circle.pdf", width=5, height=4)
+post.CAPS <- plot(net.post, labels= shortlabel, layout="circle", label.prop = 0.6, vsize=8, cut=0, 
+                  border.width=1.5, border.color='black',pie = pred.post$error[,2],groups=clusters, color= Colors,borders = TRUE, legend = FALSE)
+dev.off()
+#!#
+
+##Calculate Node Metrics
+if(!require("qgraph")) install.packages("qgraph")
+if(!require("ppcor")) install.packages("ppcor")
+if(!require("matrixStats")) install.packages("matrixStats")
+node.cent <- centrality_auto(net.pre)
+
+#data frame with all metrics 
+node.metrics <- data.frame(mean = colMeans(df.net), strength = node.cent$node.centrality$Strength, predictability = as.numeric(as.character(pred$errors[,2])), ΔnodeΔnetwork.R = df.cor$ΔnodeΔnetwork.R, SD = colSds(as.matrix(df.net)))
+
+cor.mean <- cor.test(node.metrics$mean, node.metrics$ΔnodeΔnetwork.R) 
+cor.strength <- cor.test(node.metrics$strength, node.metrics$ΔnodeΔnetwork.R)
+cor.pred <- cor.test(node.metrics$predictability, node.metrics$ΔnodeΔnetwork.R) 
+cor.strengthpred <- cor.test(node.metrics$predictability, node.metrics$strength) 
+cor.meanpred <- cor.test(node.metrics$predictability, node.metrics$mean) 
+cor.meanstrength <- cor.test(node.metrics$mean, node.metrics$strength)
+
+pcor(node.metrics[,c(1,2,4)], method = "pearson")
+pcor(node.metrics[,c(1,3,4)], method = "pearson")
+
+paired.r(cor.strength$estimate[[1]],cor.pred$estimate[[1]], cor.strengthpred$estimate[[1]], n=17, twotailed = TRUE)
+paired.r(cor.strength$estimate[[1]],cor.mean$estimate[[1]], cor.meanstrength$estimate[[1]], n=17, twotailed = FALSE)
+paired.r(cor.mean$estimate[[1]],cor.pred$estimate[[1]], cor.meanpred$estimate[[1]], n=17, twotailed = FALSE)
+
+#Plot Correlations Between Node-Metrics and Node-Network Relationship
+cor.theme <- theme(
+  #axis.line = element_line(size=.4),
+  axis.title.x = element_text(size = 12),
+  axis.title.y = element_text(size = 12),
+  axis.text.x = element_text(size = 6), 
+  axis.text.y = element_text(size = 6),
+  plot.margin = unit(c(0,0.35,0,0), "cm")
+)
+
+#create plots
+cor.plots <- list()
+for(i in 1:(ncol(node.metrics) - 2)){
+  X = node.metrics[[i]]
+  x.scale = function(X) sprintf("%.1f", X, digits = 4)
+  x.breaks = seq(min(X), max(X), length.out = 4)
+  Y = node.metrics[["ΔnodeΔnetwork.R"]]
+  y.scale = function(Y) sprintf("%.1f", Y, digits = 4)
+  y.breaks = seq(min(Y), max(Y), length.out = 4)
+  cor.plots[[i]] <- 
+    ggplot(data = data.frame(X = X, Y = Y, node = row.names(node.metrics)), 
+           aes(x = X, y = Y)) +
+    geom_point(size = 2, show.legend = TRUE) +
+    scale_x_continuous(labels = x.scale, breaks = x.breaks) +
+    scale_y_continuous(labels = y.scale, breaks = y.breaks) +
+    #geom_text(aes(label = node), hjust = -0.2, vjust = 0.5) +
+    theme_classic() +
+    labs(x = paste(colnames(node.metrics[i])), 
+         y = expression(paste(Delta, "Node-", Delta, "Network Correlation"))) + 
+    geom_smooth(method = "lm", se = FALSE, color = "black") + cor.theme
+  ggsave(cor.plots[[i]], filename = paste(colnames(node.metrics[i]), ".pdf", sep =""), device = "pdf", dpi = 300, width = 2.5, height = 2, units = "in", scale=1.5)
+}
+
+#Pretreatment Network Stability
+#Non-parametric bootstrapped confidence intervals of estimated edges
+bootnet.df.net <- bootnet(df.net, nBoots = 1000, default = "EBICglasso", nCores = 7, statistics = c("edge", "strength"))  #!# bootnet.df.net_PCL <- bootnet.df.net
+
+#Plot bootstrapped edge CIs:
+sf1 <- plot(bootnet.df.net, labels = TRUE, order = "sample") + 
+  theme(axis.text.y = element_text(size = 14), axis.text.x = element_text(size = 14), strip.text = element_text(size = 20)) # + #!# the "+" was included in the original code
+  sf1 <- sf1 + scale_y_continuous(labels = sf1$data$id, breaks = seq(1,272,1), expand=c(0,0))
+ggsave(sf1, filename = "sf1_PCL.pdf", device = "pdf", dpi = 300, width = 15, height = 20, units = "in")
+
+#Plot significant differences (alpha = 0.05) of edges:
+sf2 <- plot(bootnet.df.net, "edge", plot = "difference", onlyNonZero = TRUE, labels =  FALSE, order = "sample") + theme(strip.text = element_text(size = 20))
+ggsave(sf2, filename = "sf2_PCL.pdf", device = "pdf", dpi = 300, width = 7, height = 7, units = "in")
+
+#Plot significant differences (alpha = 0.05) of node strength:
+sf3 <- plot(bootnet.df.net, "strength", plot = "difference", order = "sample") + theme(axis.text.y = element_text(size = 14), axis.text.x = element_text(size = 14), strip.text = element_text(size = 20))
+ggsave(sf3, filename = "sf3_PCL.pdf", device = "pdf", dpi = 300, width = 7, height = 7, units = "in")
+
+#Case-drop boostrap test
+casedrop.df.net <- bootnet(df.net, default = "EBICglasso", nBoots = 10000, nCores = 6, type = "case", caseN = .7 * nrow(df.net))  #!# casedrop.df.net_PCL <- casedrop.df.net
+
+#Compute CS-coefficients:
+stability.df.net <- corStability(casedrop.df.net, statistics = "strength", verbose = FALSE)
+stability.df.net #!# 0.732 stability.df.net_PCL <- stability.df.net
+
+
+#!# End of Papini's code #!#
+
+######   4.2 Extension ########################################################
+#Instead of strenght use also expected influence
+
+## Compare Stenght and EI
+# Plot
+pdf("PCL_Strength_EI.pdf", width=10, height=5)
+centralityPlot(net.pre, include = c("Strength","ExpectedInfluence"),
+               orderBy = "Strength", labels = shortlabel)
+dev.off()
+
+#Export Strenght and EI as df, z-transform, plot and correlate
+#Export
+S_EI <- node.cent$node.centrality$Strength
+S_EI.df <- as.data.frame(S_EI)
+S_EI.df$EI <- node.cent$node.centrality$ExpectedInfluence
+S_EI.df$mean <- node.metrics$mean
+S_EI.df$SD <- node.metrics$SD
+S_EI.df$pred <- node.metrics$predictability
+S_EI.df$change <- df.cor$ΔnodeΔnetwork.R
+
+# Add Endorsement
+Frequency <-colSums(pcl_pre.df != 1)
+Endorsement <- 701-Frequency
+Endorsement <- Endorsement[2:18]
+S_EI.df$Endorsement <- (Endorsement)/701
+
+# Add Delta nodes and its SD
+Delta_SD_node.df <-dplyr::select(df.combine, `ΔINT PCL`, `ΔDRE PCL`,`ΔFLA PCL`, `ΔUPS PCL`, `ΔPHY PCL`, `ΔAVT PCL`, `ΔAVS PCL`,
+                                 `ΔAMN PCL`, `ΔDIS PCL`,`ΔDTA PCL`, `ΔNUM PCL`, `ΔFUT PCL`, `ΔSLE PCL`, `ΔANG PCL`, `ΔCON PCL`, `ΔHYP PCL`, `ΔSTR PCL`)
+S_EI.df$real_change_not_association <- colMeans(Delta_SD_node.df)
+S_EI.df$real_change_not_association_SD <- colSds(as.matrix(df.net))
+
+#z-transform
+S_EI.df$Strenght_z <- scale(S_EI.df$S_EI)
+S_EI.df$EI_z <- scale(S_EI.df$EI)
+S_EI.df$mean_z <- scale(S_EI.df$mean)
+S_EI.df$SD_z <- scale(S_EI.df$SD)
+S_EI.df$pred_z <- scale(S_EI.df$pred)
+S_EI.df$change_z <- scale(S_EI.df$change)
+S_EI.df$Endorsement_z <- scale(Endorsement)
+S_EI.df$real_change_not_association_z <- scale(S_EI.df$real_change_not_association)
+S_EI.df$real_change_not_association_SD_z <- scale(S_EI.df$real_change_not_association_SD)
+
+S_EI.df_without_amnesia <- S_EI.df[-c(8), ]
+
+
+cor.test(S_EI.df_without_amnesia$SD_z,S_EI.df_without_amnesia$Strenght_z, method = "pearson")     # sig
+cor.test(S_EI.df_without_amnesia$SD_z,S_EI.df_without_amnesia$EI_z, method = "pearson")           # 
+cor.test(S_EI.df_without_amnesia$SD_z,S_EI.df_without_amnesia$mean_z, method = "pearson")         # 
+cor.test(S_EI.df_without_amnesia$SD_z,S_EI.df_without_amnesia$pred_z, method = "pearson")         # sig
+cor.test(S_EI.df_without_amnesia$SD_z,S_EI.df_without_amnesia$Endorsement_z, method = "pearson")  # 
+
+cor.test(S_EI.df_without_amnesia$EI_z,S_EI.df_without_amnesia$Strenght_z, method = "pearson")     # sig
+cor.test(S_EI.df_without_amnesia$SD_z,S_EI.df_without_amnesia$EI_z, method = "pearson")           # 
+cor.test(S_EI.df_without_amnesia$SD_z,S_EI.df_without_amnesia$mean_z, method = "pearson")         # sig
+cor.test(S_EI.df_without_amnesia$SD_z,S_EI.df_without_amnesia$pred_z, method = "pearson")         # sig
+cor.test(S_EI.df_without_amnesia$SD_z,S_EI.df_without_amnesia$Endorsement_z, method = "pearson")  # sig
+
+
+# Plot and test correlation
+## Pearson correlation
+# EI vs node_network change
+pdf("EI_vs_nodenode_PCL_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df, y = "change_z", x = "EI_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Expected influence")
+dev.off()
+
+#EI vs nodenode without amnesia
+S_EI.df_without_amnesia <- S_EI.df[-c(8), ]
+pdf("EI_vs_nodenode_without_amnes_PCL_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df_without_amnesia, y = "change_z", x = "EI_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Expected influence")
+dev.off()
+
+
+# Mean vs node_network change
+pdf("mean_vs_nodenode_PCL_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df, y = "change_z", x = "mean_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Mean symptom severity")
+dev.off()
+
+#Mean vs nodenode without amnesia
+S_EI.df_without_amnesia <- S_EI.df[-c(8), ]
+pdf("mena_vs_nodenode_without_amnes_PCL_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df_without_amnesia, y = "change_z", x = "mean_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Mean symptom severity")
+dev.off()
+
+#Endorsement vs node_network change
+pdf("End_vs_nodenode_PCL_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df, y = "change_z", x = "Endorsement_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Infrequency of endorsement")
+dev.off()
+
+#Endorsement vs nodenode without amnesia
+S_EI.df_without_amnesia <- S_EI.df[-c(8), ]
+pdf("End_vs_nodenode_without_amnes_PCL_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df_without_amnesia, y = "change_z", x = "Endorsement_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Infrequency of endorsement")
+dev.off()
+
+#Predictability vs node_network change
+pdf("Pred_vs_nodenode_PCL_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df, y = "change_z", x = "pred_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Predictability")
+dev.off()
+
+#Predictability vs nodenode without amnesia
+S_EI.df_without_amnesia <- S_EI.df[-c(8), ]
+pdf("Pred_vs_nodenode_without_amnes_PCL_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df_without_amnesia, y = "change_z", x = "pred_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Predictability")
+dev.off()
+
+#Strenght vs node_network change
+pdf("Strength_vs_nodenode_PCL_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df, y = "change_z", x = "Strenght_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Strenght")
+dev.off()
+
+#Strenght vs nodenode without amnesia
+S_EI.df_without_amnesia <- S_EI.df[-c(8), ]
+pdf("Strength_vs_nodenode_without_amnes_PCL_pearson.pdf", width=5, height=5)
+ggscatter(S_EI.df_without_amnesia, y = "change_z", x = "Strenght_z", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = FALSE, cor.method = "pearson",
+          ylab = expression(paste(Delta, "Node-", Delta, "Network Correlation")), xlab = "Strenght")
+dev.off()
+
+
+
+## Numeric Correlations 
+# Z-Standartized
+# Incl. Amnesia
+cor.mean <- cor.test(S_EI.df$mean_z, S_EI.df$change_z, method = "pearson")                    
+cor.strength <- cor.test(S_EI.df$Strenght_z, S_EI.df$change_z, method = "pearson")            
+cor.pred <- cor.test(S_EI.df$pred_z,S_EI.df$change_z, method = "pearson")             
+cor.EI <- cor.test(S_EI.df$EI_z, S_EI.df$change_z, method = "pearson")             
+cor.END <- cor.test(S_EI.df$Endorsement_z, S_EI.df$change_z, method = "pearson")            
+
+# Without Amnesia
+cor.mean.withoutAmnesia <- cor.test(S_EI.df_without_amnesia$mean_z, S_EI.df_without_amnesia$change_z, method = "pearson") 
+cor.strength.withoutAmnesia <- cor.test(S_EI.df_without_amnesia$Strenght_z, S_EI.df_without_amnesia$change_z, method = "pearson") 
+cor.pred.withoutAmnesia <- cor.test(S_EI.df_without_amnesia$pred_z, S_EI.df_without_amnesia$change_z, method = "pearson") 
+cor.EI.withoutAmnesia <- cor.test(S_EI.df_without_amnesia$EI_z, S_EI.df_without_amnesia$change_z, method = "pearson") 
+cor.INF.withoutAmnesia <- cor.test(S_EI.df_without_amnesia$Endorsement_z, S_EI.df_without_amnesia$change_z, method = "pearson")
+
+## Non-Standartized
+# Incl. Amnesia
+cor.mean_NS <- cor.test(S_EI.df$mean, S_EI.df$change, method = "pearson") 
+cor.strength_NS <- cor.test(S_EI.df$Strenght, S_EI.df$change, method = "pearson")
+cor.pred_NS <- cor.test(S_EI.df$pred,S_EI.df$change, method = "pearson") 
+cor.EI_NS <- cor.test(S_EI.df$EI, S_EI.df$change, method = "pearson") 
+cor.END_NS <- cor.test(S_EI.df$Endorsement, S_EI.df$change, method = "pearson")
+
+# Without Amnesia
+cor.mean.withoutAmnesia_NS <- cor.test(S_EI.df_without_amnesia$mean, S_EI.df_without_amnesia$change, method = "pearson") 
+cor.strength.withoutAmnesia_NS <- cor.test(S_EI.df_without_amnesia$Strenght, S_EI.df_without_amnesia$change, method = "pearson") 
+cor.pred.withoutAmnesia_NS <- cor.test(S_EI.df_without_amnesia$pred, S_EI.df_without_amnesia$change, method = "pearson") 
+cor.EI.withoutAmnesia_NS <- cor.test(S_EI.df_without_amnesia$EI, S_EI.df_without_amnesia$change, method = "pearson") 
+cor.INF.withoutAmnesia_NS <- cor.test(S_EI.df_without_amnesia$Endorsement, S_EI.df_without_amnesia$change, method = "pearson")
+
+
+
+###### 5. FDR Corretion of p-values ##########################################
+# FDR_Centrality <- read_excel("p_values_centrality.xlsx")
+
+FDR_Centrality$FDR <- p.adjust(FDR_Centrality$`p value`, method = "fdr", n= 20)
+
+# round #
+FDR_Centrality_3_digit<- FDR_Centrality %>% mutate_if(is.numeric, round, 3)
+
+# export and save #
+write.csv(FDR_Centrality_3_digit, file = "FDR_T_centrality.csv",row.names=TRUE, na="")
+
+
+###### 6. Community Analyses ##################################################
+
+### CAPS
+data.comm.pre <- CAPS_pre.df[,2:18]
+data.comm.post <- CAPS_post.df[,2:18]
+
+comm1<- EGA(data.comm.pre, plot.EGA = TRUE)
+comm2<- EGA(data.comm.post, plot.EGA = TRUE)
+
+
+### PCL
+data.comm.pre.PCL <- pcl_pre.df[,2:18]
+data.comm.post.PCL <- pcl_post.df[,2:18]
+
+comm1.PCL<- EGA(data.comm.pre.PCL, plot.EGA = TRUE)
+comm2.PCL<- EGA(data.comm.post.PCL, plot.EGA = TRUE)
+
+### Combine
+EGA_list_CAPS <- comm1$dim.variables %>% 
+  right_join(comm2$dim.variables, by = "items")
+
+EGA_list_PCL <- comm1.PCL$dim.variables %>% 
+  right_join(comm2.PCL$dim.variables, by = "items")
+
+colnames(EGA_list_CAPS) <- c("Items", "CAPS_Pre", "CAPS_post")
+colnames(EGA_list_PCL) <- c("Items", "PCL_pre", "PCL_post")
+
+write_csv2(EGA_list_CAPS, "Communities_CAPS.csv")
+write_csv2(EGA_list_PCL, "Communities_PCL.csv")
+
+###### 7. NCT ##################################################
+
+set.seed(241)
+
+## CAPS
+compare_CAPS <- NCT(data.comm.pre,data.comm.post, it=5000, binary.data=FALSE, test.edges=TRUE, edges='all', progressbar=TRUE)
+#Topology
+compare_CAPS$nwinv.pval
+
+## PCL
+compare_PCL <- NCT(data.comm.pre.PCL,data.comm.post.PCL, it=5000, binary.data=FALSE, test.edges=TRUE, edges='all', progressbar=TRUE)
+#Topology
+compare_PCL$nwinv.pval
+
+
+###### 8. Session info #######################################################
+
+session_info()
+
+
+
+
+
+
